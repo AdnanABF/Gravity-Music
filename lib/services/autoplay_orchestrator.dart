@@ -14,6 +14,7 @@ import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 
+import '../shared/media_domain.dart';
 import 'recommendation_service.dart';
 
 class AutoplayOrchestrator {
@@ -66,6 +67,19 @@ class AutoplayOrchestrator {
     final items = audioHandler.queue.value;
     final currentIdx = audioHandler.playbackState.value.queueIndex;
     if (items.isEmpty || currentIdx == null) return;
+
+    // Podcast Mode plays through the same handler (there is only one, and it
+    // owns the notification + Android foreground service). Without this
+    // guard, a single-episode queue reads as "0 tracks remaining" and this
+    // orchestrator would seed YouTube music radio from the EPISODE's videoId
+    // and append songs behind it. Music items never carry the marker, so this
+    // is a no-op for every music queue.
+    if (currentIdx >= 0 &&
+        currentIdx < items.length &&
+        isPodcastItem(items[currentIdx])) {
+      return;
+    }
+    if (isPodcastItem(items.last)) return;
 
     final remaining = items.length - currentIdx - 1;
     if (remaining >= watermark) return;

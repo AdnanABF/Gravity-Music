@@ -27,6 +27,7 @@ import '../models/hm_streaming_data.dart';
 import '../services/background_task.dart';
 import '../services/download_service.dart';
 import '../services/playlist_download_service.dart';
+import '../podcast/services/podcast_download_service.dart';
 import '../services/library_service.dart';
 import '../services/playback_engine.dart';
 import '../services/quality_prefs.dart';
@@ -533,6 +534,28 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
       );
     }
 
+    // 0c. Podcast offline download — same offline-first path as 0/0b, but
+    //     kept in the podcast store so episodes never appear in the music
+    //     Downloads tab and clearing one store never deletes the other.
+    final podcastOfflineUrl = PodcastDownloadService.playbackUrlFor(videoId);
+    if (podcastOfflineUrl != null) {
+      return HMStreamingData(
+        playable: true,
+        statusMSG: 'OK',
+        formats: [
+          Audio(
+            itag: 140,
+            audioCodec: Codec.mp4a,
+            bitrate: 0,
+            duration: 0,
+            loudnessDb: PodcastDownloadService.loudnessFor(videoId),
+            url: podcastOfflineUrl,
+            size: 0,
+          ),
+        ],
+      );
+    }
+
     // 1. Check if URL is cached and still valid
     if (urlCacheBox.containsKey(videoId) && !generateNewUrl) {
       final cached = urlCacheBox.get(videoId);
@@ -958,6 +981,17 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
       case 'setVolume':
         // Slider is 0..100; the engine folds in the normalization gain.
         _engine.setUserVolume((extras!['value'] as num).toDouble());
+        break;
+
+      // ── Set playback rate ───────────────────────────────────────────────
+      // Added for Podcast Mode, which offers 0.75×–2× (music has no speed UI
+      // and never sends this). Purely additive: with no caller the engine
+      // stays at just_audio's 1.0 default, so music playback is unchanged.
+      // The podcast player resets this to 1.0 whenever a non-podcast item
+      // becomes current, so a fast episode can't leave music playing fast.
+      case 'setSpeed':
+        final rate = (extras!['value'] as num).toDouble().clamp(0.25, 3.0);
+        await _engine.player.setSpeed(rate);
         break;
 
       // ── Reload current track at the newly-selected quality ──────────────

@@ -11,6 +11,7 @@ import '../services/listening_history_service.dart';
 import '../services/quality_prefs.dart';
 import '../services/recommendation_service.dart';
 import '../services/thumb_util.dart';
+import '../shared/media_domain.dart';
 
 class ProgressBarState {
   final Duration current;
@@ -76,10 +77,19 @@ class PlayerController extends GetxController {
       currentSong.value = item;
       if (item != null) {
         isCurrentSongLiked.value = LibraryService.isLiked(item.id);
-        _saveSession();
-        // Feed the listening-history store that powers the local "Made For
-        // You" mixes (play counts + first/last played).
-        ListeningHistoryService.record(item);
+        // Podcast Mode shares this audio handler (there is only one per app),
+        // so episodes flow through this listener too. They must NOT be folded
+        // into music state: recording one would put it in the play counts
+        // behind "Made For You", and saving one into the session would restore
+        // an episode into the music queue on the next launch. Podcast Mode
+        // keeps its own history and its own resume position. Music items never
+        // carry the marker, so nothing below changes for music.
+        if (!isPodcastItem(item)) {
+          _saveSession();
+          // Feed the listening-history store that powers the local "Made For
+          // You" mixes (play counts + first/last played).
+          ListeningHistoryService.record(item);
+        }
       }
     });
 
@@ -482,6 +492,11 @@ class PlayerController extends GetxController {
 
   Future<void> _restoreSession() async {
     try {
+      // The app was closed on a podcast episode: Podcast Mode restores that
+      // instead. Without this, both restores race for the one shared engine
+      // and the last MUSIC queue wins, replacing the episode the user was in.
+      // The music session stays saved on disk, untouched, for next time.
+      if (LastPlaybackDomain.isPodcast) return;
       final saved = Hive.box('AppPrefs').get('session');
       if (saved == null || saved is! Map) return;
       final rawQueue = saved['queue'] as List? ?? [];

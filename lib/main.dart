@@ -17,6 +17,10 @@ import 'controllers/lyrics_controller.dart';
 import 'controllers/player_controller.dart';
 import 'controllers/playlist_download_controller.dart';
 import 'controllers/update_controller.dart';
+import 'podcast/controllers/podcast_library_controller.dart';
+import 'podcast/controllers/podcast_mode_controller.dart';
+import 'podcast/controllers/podcast_player_controller.dart';
+import 'shared/media_domain.dart';
 import 'services/audio_handler.dart';
 import 'services/battery_optimization.dart';
 import 'services/heartbeat_service.dart';
@@ -79,6 +83,13 @@ void main() async {
     Hive.openBox('CacheBox'),
     Hive.openBox('DownloadsBox'),
     Hive.openBox('ListeningHistory'),
+    // ── Podcast Mode (additive) ──
+    // Three NEW boxes, opened alongside the existing ones. Nothing here reads
+    // or writes the music boxes above, so an install that never opens Podcast
+    // Mode simply has three empty boxes and behaves exactly as before.
+    Hive.openBox('PodcastBox'),      // following, saved, downloads, prefs, mode
+    Hive.openBox('PodcastHistory'),  // per-episode progress + per-show stats
+    Hive.openBox('PodcastCache'),    // TTL'd show pages / discover feed
   ]);
 
   // ── Register audio handler (same as HarmonyMusic) ─────────────────────────
@@ -115,9 +126,22 @@ void main() async {
   // the actual startup check runs post-first-frame below.
   Get.put(UpdateController());
 
+  // ── Podcast Mode ──────────────────────────────────────────────────────────
+  // Registered eagerly (not lazily) for two reasons: RootShell reads the mode
+  // on its FIRST frame, and PodcastPlayerController must be subscribed to the
+  // audio handler before any episode can start — including one restored from
+  // a previous session. All three are cheap: they read a few Hive keys and
+  // attach stream listeners. Nothing music-side is aware of them.
+  Get.put(PodcastModeController());
+  Get.put(PodcastPlayerController(audioHandler: audioHandler));
+  Get.put(PodcastLibraryController());
+
 // Listen to song changes and auto-fetch lyrics
 ever(Get.find<PlayerController>().currentSong, (song) {
-  if (song != null) {
+  // Skipped for podcast episodes: lyrics are a music feature, and looking one
+  // up for an episode is a guaranteed-miss network call that would also leave
+  // podcast metadata sitting in the music lyrics controller.
+  if (song != null && !isPodcastItem(song)) {
     lyricsController.fetchLyrics(
       trackId:      song.id,
       title:        song.title,

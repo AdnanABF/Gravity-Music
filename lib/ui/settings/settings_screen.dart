@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../controllers/update_controller.dart';
+import '../../podcast/controllers/podcast_mode_controller.dart';
 import '../../services/update_service.dart';
 import '../app_theme.dart';
 import '../theme/glass.dart';
@@ -83,6 +84,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+              // Opt-in for Podcast Mode's Music / Podcasts switch. Additive:
+              // with the switch off (the default) the main screen is exactly
+              // what it was before podcasts existed.
+              const _SectionLabel('Podcasts'),
+              Obx(() {
+                final mode = Get.find<PodcastModeController>();
+                final on = mode.switchEnabled.value;
+                return _SettingTile(
+                  icon: Icons.podcasts_rounded,
+                  iconColor: AppColors.accent,
+                  title: 'Show Music / Podcasts switch',
+                  subtitle: on
+                      ? 'Shown on the main screen'
+                      : 'Hidden — turn on to use Podcasts',
+                  trailing: Switch(
+                    value: on,
+                    activeColor: Colors.white,
+                    activeTrackColor: AppColors.accent,
+                    onChanged: mode.setSwitchEnabled,
+                  ),
+                  onTap: () => mode.setSwitchEnabled(!on),
+                );
+              }),
               const _SectionLabel('About'),
               _SettingTile(
                 icon: Icons.system_update_rounded,
